@@ -39,7 +39,8 @@ sudo apt install -y git golang-go
 sudo mkdir -p /var/www
 sudo chown -R $USER:$USER /var/www
 cd /var/www
-git clone https://github.com/Ruslan-Xusenov/infobot.git
+# GitHub token orqali klonlash (avtomatik yangilanish parolsiz ishlashi uchun)
+git clone https://YOUR_GITHUB_TOKEN@github.com/Ruslan-Xusenov/infobot.git
 cd infobot
 ```
 
