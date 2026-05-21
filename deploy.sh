@@ -22,7 +22,19 @@ fi
 LOCAL_HASH=$(git rev-parse HEAD)
 REMOTE_HASH=$(git rev-parse origin/"$BRANCH")
 
-if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+# Check if binary exists or if force flag is passed
+FORCE_BUILD=false
+if [ ! -f "$BINARY_NAME" ]; then
+    echo "Binary file '$BINARY_NAME' not found. Forcing build..."
+    FORCE_BUILD=true
+fi
+
+if [ "$1" = "-f" ] || [ "$1" = "--force" ]; then
+    echo "Force flag detected. Forcing build and restart..."
+    FORCE_BUILD=true
+fi
+
+if [ "$LOCAL_HASH" = "$REMOTE_HASH" ] && [ "$FORCE_BUILD" = "false" ]; then
     echo "No updates available. System is up to date."
     exit 0
 fi
