@@ -1,0 +1,21 @@
+[Unit]
+Description=Telegram InfoBot Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+# If you run the service under a specific user, change root to that username (e.g. ubuntu, kali)
+User=root
+# Set this to the actual directory where the project is installed on the server
+WorkingDirectory=/var/www/infobot
+# ExecStart should point to the compiled bot_app binary in the WorkingDirectory
+ExecStart=/var/www/infobot/bot_app
+Restart=always
+RestartSec=5
+# Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=infobot
+
+[Install]
+WantedBy=multi-user.target
