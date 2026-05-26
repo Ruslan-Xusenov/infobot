@@ -9,6 +9,28 @@ BINARY_NAME="bot_app"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR" || { echo "Failed to navigate to project directory"; exit 1; }
 
+# 1. Check if .env file exists
+if [ ! -f ".env" ]; then
+    echo "Error: .env file not found. Creating a template from .env.example..."
+    cp .env.example .env
+    echo "Please configure your .env file with your bot token and DB credentials, then run this script again."
+    exit 1
+fi
+
+# 2. Check and install systemd service if not present
+if [ ! -f "/etc/systemd/system/$SERVICE_NAME" ]; then
+    echo "Systemd service file not found in /etc/systemd/system/. Installing..."
+    # Dynamically replace /var/www/infobot with the actual SCRIPT_DIR
+    sed "s|/var/www/infobot|$SCRIPT_DIR|g" "$SCRIPT_DIR/infobot.service" > /tmp/tmp_infobot.service
+    sudo cp /tmp/tmp_infobot.service "/etc/systemd/system/$SERVICE_NAME"
+    rm /tmp/tmp_infobot.service
+    
+    echo "Reloading systemd daemon..."
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$SERVICE_NAME"
+    echo "Service $SERVICE_NAME installed and enabled."
+fi
+
 echo "Checking for updates..."
 
 # Fetch latest changes from remote repository
