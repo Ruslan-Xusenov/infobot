@@ -29,3 +29,10 @@ type Channel struct {
 	URL       string `db:"url"`
 	Name      string `db:"name"`
 }
+
+type Button struct {
+	ID         int    `db:"id"`
+	UniqueName string `db:"unique_name"`
+	Label      string `db:"label"`
+	OrderNum   int    `db:"order_num"`
+}

@@ -125,3 +125,45 @@ func GetAllUsers() ([]User, error) {
 	err := DB.Select(&users, "SELECT * FROM users ORDER BY created_at DESC")
 	return users, err
 }
+
+// --- Button CRUD ---
+
+func GetAllButtons() ([]Button, error) {
+	var buttons []Button
+	err := DB.Select(&buttons, "SELECT * FROM buttons ORDER BY order_num ASC, id ASC")
+	return buttons, err
+}
+
+func GetButton(uniqueName string) (*Button, error) {
+	var btn Button
+	err := DB.Get(&btn, "SELECT * FROM buttons WHERE unique_name = $1", uniqueName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &btn, err
+}
+
+func AddButton(label, uniqueName string) error {
+	var maxOrder int
+	DB.Get(&maxOrder, "SELECT COALESCE(MAX(order_num), 0) FROM buttons")
+	_, err := DB.Exec(
+		"INSERT INTO buttons (unique_name, label, order_num) VALUES ($1, $2, $3)",
+		uniqueName, label, maxOrder+1,
+	)
+	if err == nil {
+		DB.Exec(`INSERT INTO contents (button_name, text_content, media_type) VALUES ($1, $2, 'text') ON CONFLICT DO NOTHING`,
+			uniqueName, label+" haqida ma'lumot...")
+	}
+	return err
+}
+
+func UpdateButtonLabel(uniqueName, newLabel string) error {
+	_, err := DB.Exec("UPDATE buttons SET label = $1 WHERE unique_name = $2", newLabel, uniqueName)
+	return err
+}
+
+func DeleteButton(uniqueName string) error {
+	DB.Exec("DELETE FROM contents WHERE button_name = $1", uniqueName)
+	_, err := DB.Exec("DELETE FROM buttons WHERE unique_name = $1", uniqueName)
+	return err
+}

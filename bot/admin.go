@@ -14,7 +14,7 @@ import (
 var (
 	adminMenu = &telebot.ReplyMarkup{}
 	btnStat   = adminMenu.Data("📊 Analitika", "admin_stat")
-	btnEdit   = adminMenu.Data("📝 Tugmalarni tahrirlash", "admin_edit")
+	btnBtns   = adminMenu.Data("🗂 Tugmalar boshqaruvi", "admin_btns")
 	btnChan   = adminMenu.Data("📢 Majburiy obuna", "admin_chan")
 	btnBcast  = adminMenu.Data("📨 Xabar tarqatish", "admin_bcast")
 	btnAdmins = adminMenu.Data("👥 Adminlar", "admin_admins")
@@ -23,14 +23,14 @@ var (
 
 func RegisterAdminHandlers() {
 	adminMenu.Inline(
-		adminMenu.Row(btnStat, btnEdit),
+		adminMenu.Row(btnStat, btnBtns),
 		adminMenu.Row(btnChan, btnBcast),
 		adminMenu.Row(btnAdmins, btnExport),
 	)
 
 	b.Handle("/admin", onAdmin)
 	b.Handle(&btnStat, onAdminStat)
-	b.Handle(&btnEdit, onAdminEditButtons)
+	b.Handle(&btnBtns, onAdminManageButtons)
 	b.Handle(&btnChan, onAdminChannels)
 	b.Handle(&btnBcast, onAdminBcast)
 	b.Handle(&btnAdmins, onAdminAdmins)
@@ -66,21 +66,87 @@ func onAdminStat(c telebot.Context) error {
 	return c.Send(text, telebot.ModeMarkdown)
 }
 
-func onAdminEditButtons(c telebot.Context) error {
+// ─── BUTTON MANAGEMENT ───────────────────────────────────────────────────────
+
+func onAdminManageButtons(c telebot.Context) error {
+	return sendButtonList(c)
+}
+
+func sendButtonList(c telebot.Context) error {
+	buttons, err := database.GetAllButtons()
+	if err != nil {
+		return c.Send("Xatolik yuz berdi.")
+	}
+
 	menu := &telebot.ReplyMarkup{}
 	var rows []telebot.Row
-	btns := []string{"biz_kimmiz", "sotuv_bolimi", "shaxsiy_brend", "zapusk", "boglanish"}
-	for _, bName := range btns {
-		btn := menu.Data(bName, "edit_"+bName)
-		b.Handle(&btn, func(cc telebot.Context) error {
-			SetAdminState(cc.Sender().ID, "wait_content", map[string]interface{}{"button": cc.Callback().Unique[5:]})
-			return cc.Send("Ushbu tugma uchun yangi matn, rasm, video yoki fayl yuboring. (Media fayllarga caption yozishingiz ham mumkin). Bekor qilish uchun /admin.")
+
+	for _, dbBtn := range buttons {
+		bName := dbBtn.UniqueName
+		bLabel := dbBtn.Label
+
+		// Edit label button
+		btnEditLabel := menu.Data("✏️", "el_"+bName)
+		b.Handle(&btnEditLabel, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "el_"
+			SetAdminState(cc.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
+			return cc.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
 		})
-		rows = append(rows, menu.Row(btn))
+
+		// Edit content button
+		btnEditContent := menu.Data("📝", "ec_"+bName)
+		b.Handle(&btnEditContent, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "ec_"
+			SetAdminState(cc.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
+			return cc.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
+		})
+
+		// Delete button
+		btnDel := menu.Data("❌", "db_"+bName)
+		b.Handle(&btnDel, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "db_"
+			// Show confirm
+			confirmMenu := &telebot.ReplyMarkup{}
+			btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
+			btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
+			confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
+			b.Handle(&btnYes, func(ccc telebot.Context) error {
+				u := ccc.Callback().Unique[4:] // strip "dbc_"
+				database.DeleteButton(u)
+				ccc.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
+				return sendButtonList(ccc)
+			})
+			return cc.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
+		})
+
+		rows = append(rows, menu.Row(
+			menu.Text(bLabel),
+		))
+		rows = append(rows, menu.Row(btnEditLabel, btnEditContent, btnDel))
 	}
+
+	// Add new button
+	btnAdd := menu.Data("➕ Yangi tugma qo'shish", "add_btn")
+	b.Handle(&btnAdd, func(cc telebot.Context) error {
+		SetAdminState(cc.Sender().ID, "wait_new_button", nil)
+		return cc.Send("Yangi tugmaning nomini yuboring (foydalanuvchiga ko'rinadigan matn):\nBekor qilish: /admin")
+	})
+
+	btnBack := menu.Data("🔙 Ortga", "admin_back")
+	b.Handle(&btnBack, func(cc telebot.Context) error {
+		ClearAdminState(cc.Sender().ID)
+		return cc.Send("Admin paneliga xush kelibsiz. Nima qilamiz?", adminMenu)
+	})
+
+	rows = append(rows, menu.Row(btnAdd))
+	rows = append(rows, menu.Row(btnBack))
 	menu.Inline(rows...)
-	return c.Send("Qaysi tugmani tahrirlaymiz?", menu)
+
+	title := "🗂 *Tugmalar boshqaruvi*\n\nHar bir tugma uchun: ✏️ Nom | 📝 Kontent | ❌ O'chirish"
+	return c.Send(title, menu, telebot.ModeMarkdown)
 }
+
+// ─── CHANNELS ────────────────────────────────────────────────────────────────
 
 func onAdminChannels(c telebot.Context) error {
 	menu := &telebot.ReplyMarkup{}
@@ -94,7 +160,7 @@ func onAdminChannels(c telebot.Context) error {
 	var rows []telebot.Row
 	for _, ch := range channels {
 		btnDel := menu.Data("❌ "+ch.Name, fmt.Sprintf("del_chan_%d", ch.ChannelID))
-		chID := ch.ChannelID // Capture
+		chID := ch.ChannelID
 		b.Handle(&btnDel, func(cc telebot.Context) error {
 			database.DeleteChannel(chID)
 			return cc.Send("Kanal o'chirildi. /admin")
@@ -107,10 +173,14 @@ func onAdminChannels(c telebot.Context) error {
 	return c.Send("Majburiy obuna kanallarini boshqarish:", menu)
 }
 
+// ─── BROADCAST ───────────────────────────────────────────────────────────────
+
 func onAdminBcast(c telebot.Context) error {
 	SetAdminState(c.Sender().ID, "wait_broadcast", nil)
 	return c.Send("Barcha foydalanuvchilarga tarqatish uchun xabar, rasm yoki video yuboring. Bekor qilish uchun /admin ni bosing.")
 }
+
+// ─── ADMINS ──────────────────────────────────────────────────────────────────
 
 func onAdminAdmins(c telebot.Context) error {
 	menu := &telebot.ReplyMarkup{}
@@ -124,7 +194,7 @@ func onAdminAdmins(c telebot.Context) error {
 	var rows []telebot.Row
 	for _, adminID := range admins {
 		btnDel := menu.Data(fmt.Sprintf("❌ %d", adminID), fmt.Sprintf("del_adm_%d", adminID))
-		aID := adminID // Capture
+		aID := adminID
 		b.Handle(&btnDel, func(cc telebot.Context) error {
 			if aID == appConfig.AdminID {
 				return cc.Send("Asosiy adminni o'chira olmaysiz!")
@@ -143,6 +213,8 @@ func onAdminAdmins(c telebot.Context) error {
 	return c.Send("Adminlarni boshqarish:", menu)
 }
 
+// ─── EXPORT ──────────────────────────────────────────────────────────────────
+
 func onAdminExport(c telebot.Context) error {
 	users, err := database.GetAllUsers()
 	if err != nil {
@@ -157,7 +229,6 @@ func onAdminExport(c telebot.Context) error {
 		if u.SecondaryPhone.Valid {
 			secPhone = u.SecondaryPhone.String
 		}
-
 		sb.WriteString(fmt.Sprintf("%d,%d,%s,%s,%s,%s,%s,%s\n",
 			u.ID, u.TelegramID,
 			strings.ReplaceAll(u.FirstName, ",", " "),
@@ -174,9 +245,10 @@ func onAdminExport(c telebot.Context) error {
 		FileName: fmt.Sprintf("foydalanuvchilar_%s.csv", time.Now().Format("20060102")),
 		Caption:  "📥 Barcha foydalanuvchilar ro'yxati (CSV formatida). Bu faylni Excel orqali ochishingiz mumkin.",
 	}
-
 	return c.Send(doc)
 }
+
+// ─── TEXT STATE HANDLER ──────────────────────────────────────────────────────
 
 func onTextAdminCheck(c telebot.Context) error {
 	if !database.IsAdmin(c.Sender().ID) {
@@ -185,12 +257,44 @@ func onTextAdminCheck(c telebot.Context) error {
 
 	state := GetAdminState(c.Sender().ID)
 	if state == nil {
-		return nil // Not in state
+		return nil
 	}
 
 	text := c.Message().Text
 
 	switch state.State {
+
+	case "wait_new_button":
+		label := strings.TrimSpace(text)
+		if label == "" {
+			return c.Send("Noto'g'ri nom. Qaytadan yuboring:")
+		}
+		// Auto-generate unique name: timestamp-based
+		uniqueName := fmt.Sprintf("btn_%d", time.Now().Unix())
+		err := database.AddButton(label, uniqueName)
+		if err != nil {
+			c.Send("Xatolik yuz berdi: " + err.Error())
+		} else {
+			c.Send(fmt.Sprintf("✅ «%s» tugmasi qo'shildi!\n\nEndi bu tugma uchun kontent yuboring (matn, rasm, video):", label))
+			SetAdminState(c.Sender().ID, "wait_content", map[string]interface{}{"button": uniqueName})
+			return nil
+		}
+		ClearAdminState(c.Sender().ID)
+
+	case "wait_edit_label":
+		btnName := state.Data["button"].(string)
+		newLabel := strings.TrimSpace(text)
+		if newLabel == "" {
+			return c.Send("Noto'g'ri nom. Qaytadan yuboring:")
+		}
+		err := database.UpdateButtonLabel(btnName, newLabel)
+		if err == nil {
+			c.Send("✅ Tugma nomi muvaffaqiyatli yangilandi.")
+		} else {
+			c.Send("Xatolik yuz berdi.")
+		}
+		ClearAdminState(c.Sender().ID)
+
 	case "wait_content":
 		btnName := state.Data["button"].(string)
 		err := database.UpdateContent(btnName, text, "", "text")
@@ -233,6 +337,8 @@ func onTextAdminCheck(c telebot.Context) error {
 	return nil
 }
 
+// ─── MEDIA STATE HANDLER ─────────────────────────────────────────────────────
+
 func onMediaAdminCheck(c telebot.Context) error {
 	if !database.IsAdmin(c.Sender().ID) {
 		return nil
@@ -247,7 +353,7 @@ func onMediaAdminCheck(c telebot.Context) error {
 
 	if state.State == "wait_content" {
 		btnName := state.Data["button"].(string)
-		
+
 		var fileID, mediaType string
 		caption := msg.Caption
 
@@ -286,6 +392,8 @@ func onMediaAdminCheck(c telebot.Context) error {
 	return nil
 }
 
+// ─── BROADCAST ───────────────────────────────────────────────────────────────
+
 func broadcastMessage(msg *telebot.Message, adminID int64) {
 	ids, err := database.GetAllUsersTelegramIDs()
 	if err != nil {
@@ -298,24 +406,19 @@ func broadcastMessage(msg *telebot.Message, adminID int64) {
 		user := &telebot.User{ID: id}
 		_, err := b.Copy(user, msg)
 		if err != nil {
-			// Check if bot was blocked
 			if strings.Contains(err.Error(), "blocked") || strings.Contains(err.Error(), "deactivated") || strings.Contains(err.Error(), "not found") {
 				database.UpdateUserStatus(id, "blocked")
 				blocked++
 			} else if strings.Contains(err.Error(), "Too Many Requests") {
-				// Retry limits
 				time.Sleep(3 * time.Second)
-				b.Copy(user, msg) // Retry once
+				b.Copy(user, msg)
 				sent++
 			}
 		} else {
 			sent++
 		}
 
-		// Safe broadcasting logic (max ~25 msgs/sec overall)
 		time.Sleep(40 * time.Millisecond)
-
-		// Every 100 users, pause a little longer to reset Telegram's burst limit window
 		if (i+1)%100 == 0 {
 			time.Sleep(1 * time.Second)
 		}

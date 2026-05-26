@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -10,37 +9,33 @@ import (
 	"gopkg.in/telebot.v3"
 )
 
-var (
-	mainMenu = &telebot.ReplyMarkup{}
-	btnBizKimmiz = mainMenu.Data("Biz kimmiz", "biz_kimmiz")
-	btnSotuv     = mainMenu.Data("Sotuv boʻlimi", "sotuv_bolimi")
-	btnShaxsiy   = mainMenu.Data("Shaxsiy brend", "shaxsiy_brend")
-	btnZapusk    = mainMenu.Data("Zapusk", "zapusk")
-	btnBoglanish = mainMenu.Data("Bogʻlanish", "boglanish")
-)
+func buildMainMenu() *telebot.ReplyMarkup {
+	menu := &telebot.ReplyMarkup{}
+	buttons, err := database.GetAllButtons()
+	if err != nil || len(buttons) == 0 {
+		return menu
+	}
+	var rows []telebot.Row
+	for _, dbBtn := range buttons {
+		btn := menu.Data(dbBtn.Label, dbBtn.UniqueName)
+		rows = append(rows, menu.Row(btn))
+	}
+	menu.Inline(rows...)
+	return menu
+}
 
 func RegisterHandlers() {
-	mainMenu.Inline(
-		mainMenu.Row(btnBizKimmiz, btnSotuv),
-		mainMenu.Row(btnShaxsiy, btnZapusk),
-		mainMenu.Row(btnBoglanish),
-	)
-
 	b.Handle("/start", onStart)
 	b.Handle(telebot.OnContact, onContact)
 	b.Handle("\fcheck_sub", onCheckSub)
-	
-	// Menu callbacks
-	b.Handle(&btnBizKimmiz, onMenuCallback)
-	b.Handle(&btnSotuv, onMenuCallback)
-	b.Handle(&btnShaxsiy, onMenuCallback)
-	b.Handle(&btnZapusk, onMenuCallback)
-	b.Handle(&btnBoglanish, onMenuCallback)
 
 	RegisterAdminHandlers()
-	
+
 	b.Handle(telebot.OnText, onText)
 	b.Handle(telebot.OnMedia, onMediaAdminCheck)
+
+	// Catch-all for dynamic menu button callbacks
+	b.Handle(telebot.OnCallback, onDynamicMenuCallback)
 }
 
 func onStart(c telebot.Context) error {
@@ -126,14 +121,13 @@ func checkAndSendMenu(c telebot.Context) error {
 			menu := &telebot.ReplyMarkup{}
 			var rows []telebot.Row
 			for _, ch := range notSubscribed {
-				btn := menu.URL(fmt.Sprintf("📢 %s", ch.Name), ch.URL)
+				btn := menu.URL("📢 "+ch.Name, ch.URL)
 				rows = append(rows, menu.Row(btn))
 			}
 			btnCheck := menu.Data("✅ Obuna bo'ldim", "check_sub")
 			rows = append(rows, menu.Row(btnCheck))
 			menu.Inline(rows...)
-			
-			// Remove contact keyboard
+
 			removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
 			c.Send("Iltimos, botdan foydalanish uchun quyidagi kanallarga obuna bo'ling:", removeKb)
 			return c.Send("Kanallarga obuna bo'lgach 'Obuna bo'ldim' tugmasini bosing:", menu)
@@ -142,7 +136,7 @@ func checkAndSendMenu(c telebot.Context) error {
 
 	removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
 	c.Send("Asosiy menyu:", removeKb)
-	return c.Send("Iltimos, kerakli bo'limni tanlang:", mainMenu)
+	return c.Send("Bizning xizmatlar", buildMainMenu())
 }
 
 func onCheckSub(c telebot.Context) error {
@@ -159,34 +153,43 @@ func onCheckSub(c telebot.Context) error {
 	}
 
 	c.Respond(&telebot.CallbackResponse{Text: "Obuna tasdiqlandi!"})
-	c.Delete() // Delete the sub message
+	c.Delete()
 	return checkAndSendMenu(c)
 }
 
-func onMenuCallback(c telebot.Context) error {
-	buttonName := c.Callback().Unique
-	content, err := database.GetContent(buttonName)
-	if err != nil {
-		log.Println("Error getting content:", err)
-		return c.Respond(&telebot.CallbackResponse{Text: "Ma'lumot topilmadi!"})
+func onDynamicMenuCallback(c telebot.Context) error {
+	unique := c.Callback().Unique
+
+	btn, err := database.GetButton(unique)
+	if err != nil || btn == nil {
+		// Not a menu button — silently ignore
+		return c.Respond()
+	}
+
+	content, err := database.GetContent(unique)
+	if err != nil || content == nil {
+		c.Respond()
+		return c.Send("Kontent hali o'rnatilmagan.")
 	}
 
 	c.Respond()
+	menu := buildMainMenu()
 
-	var msg interface{}
 	switch content.MediaType {
 	case "photo":
-		msg = &telebot.Photo{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		msg := &telebot.Photo{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		_, err = b.Send(c.Sender(), msg, menu)
 	case "video":
-		msg = &telebot.Video{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		msg := &telebot.Video{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		_, err = b.Send(c.Sender(), msg, menu)
 	case "voice":
-		msg = &telebot.Voice{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		msg := &telebot.Voice{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		_, err = b.Send(c.Sender(), msg, menu)
 	case "document":
-		msg = &telebot.Document{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
-	default: // text
-		return c.Send(content.TextContent, mainMenu)
+		msg := &telebot.Document{File: telebot.File{FileID: content.MediaFileID}, Caption: content.TextContent}
+		_, err = b.Send(c.Sender(), msg, menu)
+	default:
+		return c.Send(content.TextContent, menu)
 	}
-
-	_, err = b.Send(c.Sender(), msg, mainMenu)
 	return err
 }

@@ -62,14 +62,34 @@ func createTables(cfg *config.Config) error {
 		telegram_id BIGINT PRIMARY KEY
 	);
 
+	CREATE TABLE IF NOT EXISTS buttons (
+		id SERIAL PRIMARY KEY,
+		unique_name VARCHAR(50) UNIQUE NOT NULL,
+		label VARCHAR(255) NOT NULL,
+		order_num INT DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
 	-- Insert default content if not exists
 	INSERT INTO contents (button_name, text_content, media_type) VALUES 
-	('biz_kimmiz', 'Bizning kompaniya haqida qisqacha ma''lumot...', 'text'),
-	('sotuv_bolimi', 'Sotuv bo''limi kontaktlari va ma''lumotlar...', 'text'),
-	('shaxsiy_brend', 'Shaxsiy brend haqida...', 'text'),
-	('zapusk', 'Zapusk loyihalari...', 'text'),
-	('boglanish', 'Biz bilan bog''lanish uchun kontaktlar: ...', 'text')
+	('bepul_shaxsiy_brend', 'Bepul shaxsiy brend haqida ma''lumot...', 'text'),
+	('oz_hisobimizdan', 'O''z hisobimizdan sotib berish haqida ma''lumot...', 'text'),
+	('biz_haqimizda', 'Biz haqimizda ma''lumot...', 'text'),
+	('zapusk_mablag', 'Zapuskka qancha mablag'' ketishi haqida ma''lumot...', 'text'),
+	('shaxsiy_brend_kerak', 'Shaxsiy brend nima uchun kerakligi haqida ma''lumot...', 'text'),
+	('zapusk_sotmang', 'Zapusk qilib sotmaslik haqida ma''lumot...', 'text'),
+	('telegram_botimiz', 'Telegram Botimiz: @UySotPro_Bot', 'text')
 	ON CONFLICT (button_name) DO NOTHING;
+
+	INSERT INTO buttons (unique_name, label, order_num) VALUES
+	('bepul_shaxsiy_brend', '1✅.Bepul shaxsiy brend', 1),
+	('oz_hisobimizdan', '2✅.O''z xisobimizdan sotib berish', 2),
+	('biz_haqimizda', '3✅.Biz xaqimizda', 3),
+	('zapusk_mablag', '4✅.Zapuskka qancha mablag'' ketadi', 4),
+	('shaxsiy_brend_kerak', '5✅.Shaxsiy brend nima uchun kerak', 5),
+	('zapusk_sotmang', '6✅.Zapusk qilib sotmang', 6),
+	('telegram_botimiz', '7.Telegram Botimiz @UySotPro_Bot', 7)
+	ON CONFLICT (unique_name) DO NOTHING;
 	`
 
 	_, err := DB.Exec(schema)
