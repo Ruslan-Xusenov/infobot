@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	"github.com/company/infobot/database"
 	"gopkg.in/telebot.v3"
 )
+
+var callbackDataRx = regexp.MustCompile(`^\f([\w-]+)(\|(.*))?$`)
 
 func buildMainMenu() *telebot.ReplyMarkup {
 	menu := &telebot.ReplyMarkup{}
@@ -158,10 +161,74 @@ func onCheckSub(c telebot.Context) error {
 }
 
 func onDynamicMenuCallback(c telebot.Context) error {
-	unique := c.Callback().Unique
-	log.Printf("Callback received: unique=%q, sender=%d\n", unique, c.Sender().ID)
+	// In telebot.v3, when a callback falls through to OnCallback,
+	// c.Callback().Unique is always empty.
+	// The raw data is in c.Callback().Data with \f prefix.
+	rawData := c.Callback().Data
+	log.Printf("Callback received: rawData=%q, sender=%d\n", rawData, c.Sender().ID)
 
-	// Dynamic menu button click by user
+	// Parse the \f-prefixed callback data to extract unique identifier
+	unique := ""
+	if len(rawData) > 0 && rawData[0] == '\f' {
+		match := callbackDataRx.FindStringSubmatch(rawData)
+		if match != nil {
+			unique = match[1]
+		}
+	} else {
+		unique = rawData
+	}
+
+	log.Printf("Parsed unique=%q\n", unique)
+
+	if unique == "" {
+		return c.Respond()
+	}
+
+	// ── Admin actions ──────────────────────────────────────────────
+	if strings.HasPrefix(unique, "el_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:]
+		SetAdminState(c.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
+		c.Respond()
+		return c.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
+	}
+
+	if strings.HasPrefix(unique, "ec_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:]
+		SetAdminState(c.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
+		c.Respond()
+		return c.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
+	}
+
+	if strings.HasPrefix(unique, "db_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:]
+		confirmMenu := &telebot.ReplyMarkup{}
+		btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
+		btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
+		confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
+		c.Respond()
+		return c.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
+	}
+
+	if strings.HasPrefix(unique, "dbc_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		u := unique[4:]
+		database.DeleteButton(u)
+		c.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
+		return sendButtonList(c)
+	}
+
+	// ── User menu button click ────────────────────────────────────
 	btn, err := database.GetButton(unique)
 	if err != nil {
 		log.Printf("GetButton error for unique %q: %v\n", unique, err)
@@ -171,7 +238,6 @@ func onDynamicMenuCallback(c telebot.Context) error {
 		log.Printf("Button not found in database for unique %q\n", unique)
 		return c.Respond()
 	}
-	log.Printf("Button found in database: ID=%d, Label=%q, UniqueName=%q\n", btn.ID, btn.Label, btn.UniqueName)
 
 	content, err := database.GetContent(unique)
 	if err != nil {
@@ -180,11 +246,9 @@ func onDynamicMenuCallback(c telebot.Context) error {
 		return c.Send("Kontent olishda xatolik yuz berdi: " + err.Error())
 	}
 	if content == nil {
-		log.Printf("Content not found in database for unique %q\n", unique)
 		c.Respond()
 		return c.Send("Kontent hali o'rnatilmagan.")
 	}
-	log.Printf("Content found: text_len=%d, media_type=%q, media_file_id=%q\n", len(content.TextContent), content.MediaType, content.MediaFileID)
 
 	c.Respond()
 	menu := buildMainMenu()
