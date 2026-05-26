@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -162,55 +161,7 @@ func onDynamicMenuCallback(c telebot.Context) error {
 	unique := c.Callback().Unique
 	log.Printf("Callback received: unique=%q, sender=%d\n", unique, c.Sender().ID)
 
-	// Check if it is an admin action
-	if strings.HasPrefix(unique, "el_") {
-		if !database.IsAdmin(c.Sender().ID) {
-			log.Printf("Non-admin %d tried to access edit label for %q\n", c.Sender().ID, unique)
-			return c.Respond()
-		}
-		uname := unique[3:] // strip "el_"
-		SetAdminState(c.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
-		c.Respond()
-		return c.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
-	}
-
-	if strings.HasPrefix(unique, "ec_") {
-		if !database.IsAdmin(c.Sender().ID) {
-			log.Printf("Non-admin %d tried to access edit content for %q\n", c.Sender().ID, unique)
-			return c.Respond()
-		}
-		uname := unique[3:] // strip "ec_"
-		SetAdminState(c.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
-		c.Respond()
-		return c.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
-	}
-
-	if strings.HasPrefix(unique, "db_") {
-		if !database.IsAdmin(c.Sender().ID) {
-			log.Printf("Non-admin %d tried to delete button %q\n", c.Sender().ID, unique)
-			return c.Respond()
-		}
-		uname := unique[3:] // strip "db_"
-		confirmMenu := &telebot.ReplyMarkup{}
-		btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
-		btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
-		confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
-		c.Respond()
-		return c.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
-	}
-
-	if strings.HasPrefix(unique, "dbc_") {
-		if !database.IsAdmin(c.Sender().ID) {
-			log.Printf("Non-admin %d tried to confirm delete %q\n", c.Sender().ID, unique)
-			return c.Respond()
-		}
-		u := unique[4:] // strip "dbc_"
-		database.DeleteButton(u)
-		c.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
-		return sendButtonList(c)
-	}
-
-	// Default: dynamic menu button click by user
+	// Dynamic menu button click by user
 	btn, err := database.GetButton(unique)
 	if err != nil {
 		log.Printf("GetButton error for unique %q: %v\n", unique, err)
@@ -256,3 +207,4 @@ func onDynamicMenuCallback(c telebot.Context) error {
 	}
 	return err
 }
+

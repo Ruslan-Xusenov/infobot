@@ -98,7 +98,7 @@ func onAdminManageButtons(c telebot.Context) error {
 func sendButtonList(c telebot.Context) error {
 	buttons, err := database.GetAllButtons()
 	if err != nil {
-		return c.Send("Xatolik yuz berdi.")
+		return c.Send("Xatolik yuz berdi: " + err.Error())
 	}
 
 	menu := &telebot.ReplyMarkup{}
@@ -110,12 +110,39 @@ func sendButtonList(c telebot.Context) error {
 
 		// Edit label button
 		btnEditLabel := menu.Data("✏️", "el_"+bName)
+		b.Handle(&btnEditLabel, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "el_"
+			SetAdminState(cc.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
+			cc.Respond()
+			return cc.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
+		})
 
 		// Edit content button
 		btnEditContent := menu.Data("📝", "ec_"+bName)
+		b.Handle(&btnEditContent, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "ec_"
+			SetAdminState(cc.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
+			cc.Respond()
+			return cc.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
+		})
 
 		// Delete button
 		btnDel := menu.Data("❌", "db_"+bName)
+		b.Handle(&btnDel, func(cc telebot.Context) error {
+			uname := cc.Callback().Unique[3:] // strip "db_"
+			confirmMenu := &telebot.ReplyMarkup{}
+			btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
+			btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
+			confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
+			b.Handle(&btnYes, func(ccc telebot.Context) error {
+				u := ccc.Callback().Unique[4:] // strip "dbc_"
+				database.DeleteButton(u)
+				ccc.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
+				return sendButtonList(ccc)
+			})
+			cc.Respond()
+			return cc.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
+		})
 
 		rows = append(rows, menu.Row(
 			menu.Text(bLabel),
