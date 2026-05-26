@@ -31,8 +31,9 @@ type Channel struct {
 }
 
 type Button struct {
-	ID         int    `db:"id"`
-	UniqueName string `db:"unique_name"`
-	Label      string `db:"label"`
-	OrderNum   int    `db:"order_num"`
+	ID         int       `db:"id"`
+	UniqueName string    `db:"unique_name"`
+	Label      string    `db:"label"`
+	OrderNum   int       `db:"order_num"`
+	CreatedAt  time.Time `db:"created_at"`
 }
