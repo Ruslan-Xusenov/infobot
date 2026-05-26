@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -160,14 +161,62 @@ func onCheckSub(c telebot.Context) error {
 func onDynamicMenuCallback(c telebot.Context) error {
 	unique := c.Callback().Unique
 
+	// Check if it is an admin action
+	if strings.HasPrefix(unique, "el_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:] // strip "el_"
+		SetAdminState(c.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
+		c.Respond()
+		return c.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
+	}
+
+	if strings.HasPrefix(unique, "ec_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:] // strip "ec_"
+		SetAdminState(c.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
+		c.Respond()
+		return c.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
+	}
+
+	if strings.HasPrefix(unique, "db_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		uname := unique[3:] // strip "db_"
+		confirmMenu := &telebot.ReplyMarkup{}
+		btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
+		btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
+		confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
+		c.Respond()
+		return c.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
+	}
+
+	if strings.HasPrefix(unique, "dbc_") {
+		if !database.IsAdmin(c.Sender().ID) {
+			return c.Respond()
+		}
+		u := unique[4:] // strip "dbc_"
+		database.DeleteButton(u)
+		c.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
+		return sendButtonList(c)
+	}
+
+	// Default: dynamic menu button click by user
 	btn, err := database.GetButton(unique)
 	if err != nil || btn == nil {
-		// Not a menu button — silently ignore
 		return c.Respond()
 	}
 
 	content, err := database.GetContent(unique)
-	if err != nil || content == nil {
+	if err != nil {
+		c.Respond()
+		return c.Send("Kontent olishda xatolik yuz berdi: " + err.Error())
+	}
+	if content == nil {
 		c.Respond()
 		return c.Send("Kontent hali o'rnatilmagan.")
 	}

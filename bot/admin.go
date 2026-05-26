@@ -19,6 +19,9 @@ var (
 	btnBcast  = adminMenu.Data("📨 Xabar tarqatish", "admin_bcast")
 	btnAdmins = adminMenu.Data("👥 Adminlar", "admin_admins")
 	btnExport = adminMenu.Data("📥 CSV Yuklab olish", "admin_export")
+
+	btnAddBtn    = adminMenu.Data("➕ Yangi tugma qo'shish", "add_btn")
+	btnAdminBack = adminMenu.Data("🔙 Ortga", "admin_back")
 )
 
 func RegisterAdminHandlers() {
@@ -35,6 +38,26 @@ func RegisterAdminHandlers() {
 	b.Handle(&btnBcast, onAdminBcast)
 	b.Handle(&btnAdmins, onAdminAdmins)
 	b.Handle(&btnExport, onAdminExport)
+	b.Handle(&btnAddBtn, onAdminAddButtonStart)
+	b.Handle(&btnAdminBack, onAdminBackToMenu)
+}
+
+func onAdminAddButtonStart(c telebot.Context) error {
+	if !database.IsAdmin(c.Sender().ID) {
+		return c.Respond()
+	}
+	SetAdminState(c.Sender().ID, "wait_new_button", nil)
+	c.Respond()
+	return c.Send("Yangi tugmaning nomini yuboring (foydalanuvchiga ko'rinadigan matn):\nBekor qilish: /admin")
+}
+
+func onAdminBackToMenu(c telebot.Context) error {
+	if !database.IsAdmin(c.Sender().ID) {
+		return c.Respond()
+	}
+	ClearAdminState(c.Sender().ID)
+	c.Respond()
+	return c.Send("Admin paneliga xush kelibsiz. Nima qilamiz?", adminMenu)
 }
 
 func onAdmin(c telebot.Context) error {
@@ -87,37 +110,12 @@ func sendButtonList(c telebot.Context) error {
 
 		// Edit label button
 		btnEditLabel := menu.Data("✏️", "el_"+bName)
-		b.Handle(&btnEditLabel, func(cc telebot.Context) error {
-			uname := cc.Callback().Unique[3:] // strip "el_"
-			SetAdminState(cc.Sender().ID, "wait_edit_label", map[string]interface{}{"button": uname})
-			return cc.Send(fmt.Sprintf("«%s» tugmasining yangi nomini yuboring:\nBekor qilish: /admin", uname))
-		})
 
 		// Edit content button
 		btnEditContent := menu.Data("📝", "ec_"+bName)
-		b.Handle(&btnEditContent, func(cc telebot.Context) error {
-			uname := cc.Callback().Unique[3:] // strip "ec_"
-			SetAdminState(cc.Sender().ID, "wait_content", map[string]interface{}{"button": uname})
-			return cc.Send("Yangi matn, rasm, video yoki fayl yuboring. (Caption yozishingiz mumkin). Bekor qilish: /admin")
-		})
 
 		// Delete button
 		btnDel := menu.Data("❌", "db_"+bName)
-		b.Handle(&btnDel, func(cc telebot.Context) error {
-			uname := cc.Callback().Unique[3:] // strip "db_"
-			// Show confirm
-			confirmMenu := &telebot.ReplyMarkup{}
-			btnYes := confirmMenu.Data("✅ Ha, o'chirish", "dbc_"+uname)
-			btnNo := confirmMenu.Data("🔙 Bekor qilish", "admin_btns")
-			confirmMenu.Inline(confirmMenu.Row(btnYes, btnNo))
-			b.Handle(&btnYes, func(ccc telebot.Context) error {
-				u := ccc.Callback().Unique[4:] // strip "dbc_"
-				database.DeleteButton(u)
-				ccc.Respond(&telebot.CallbackResponse{Text: "✅ Tugma o'chirildi!"})
-				return sendButtonList(ccc)
-			})
-			return cc.Send(fmt.Sprintf("«%s» tugmasini o'chirishni tasdiqlaysizmi?", uname), confirmMenu)
-		})
 
 		rows = append(rows, menu.Row(
 			menu.Text(bLabel),
@@ -125,21 +123,8 @@ func sendButtonList(c telebot.Context) error {
 		rows = append(rows, menu.Row(btnEditLabel, btnEditContent, btnDel))
 	}
 
-	// Add new button
-	btnAdd := menu.Data("➕ Yangi tugma qo'shish", "add_btn")
-	b.Handle(&btnAdd, func(cc telebot.Context) error {
-		SetAdminState(cc.Sender().ID, "wait_new_button", nil)
-		return cc.Send("Yangi tugmaning nomini yuboring (foydalanuvchiga ko'rinadigan matn):\nBekor qilish: /admin")
-	})
-
-	btnBack := menu.Data("🔙 Ortga", "admin_back")
-	b.Handle(&btnBack, func(cc telebot.Context) error {
-		ClearAdminState(cc.Sender().ID)
-		return cc.Send("Admin paneliga xush kelibsiz. Nima qilamiz?", adminMenu)
-	})
-
-	rows = append(rows, menu.Row(btnAdd))
-	rows = append(rows, menu.Row(btnBack))
+	rows = append(rows, menu.Row(btnAddBtn))
+	rows = append(rows, menu.Row(btnAdminBack))
 	menu.Inline(rows...)
 
 	title := "🗂 *Tugmalar boshqaruvi*\n\nHar bir tugma uchun: ✏️ Nom | 📝 Kontent | ❌ O'chirish"
@@ -291,7 +276,7 @@ func onTextAdminCheck(c telebot.Context) error {
 		if err == nil {
 			c.Send("✅ Tugma nomi muvaffaqiyatli yangilandi.")
 		} else {
-			c.Send("Xatolik yuz berdi.")
+			c.Send("❌ Xatolik yuz berdi: " + err.Error())
 		}
 		ClearAdminState(c.Sender().ID)
 
@@ -300,6 +285,8 @@ func onTextAdminCheck(c telebot.Context) error {
 		err := database.UpdateContent(btnName, text, "", "text")
 		if err == nil {
 			c.Send("✅ Tugma matni muvaffaqiyatli yangilandi.")
+		} else {
+			c.Send("❌ Xatolik yuz berdi: " + err.Error())
 		}
 		ClearAdminState(c.Sender().ID)
 
@@ -315,6 +302,8 @@ func onTextAdminCheck(c telebot.Context) error {
 		err = database.AddChannel(cID, parts[1], parts[2])
 		if err == nil {
 			c.Send("✅ Kanal qo'shildi.")
+		} else {
+			c.Send("❌ Xatolik yuz berdi: " + err.Error())
 		}
 		ClearAdminState(c.Sender().ID)
 
@@ -326,6 +315,8 @@ func onTextAdminCheck(c telebot.Context) error {
 		err = database.AddAdmin(aID)
 		if err == nil {
 			c.Send("✅ Yangi admin qo'shildi.")
+		} else {
+			c.Send("❌ Xatolik yuz berdi: " + err.Error())
 		}
 		ClearAdminState(c.Sender().ID)
 
@@ -376,8 +367,10 @@ func onMediaAdminCheck(c telebot.Context) error {
 			if err == nil {
 				c.Send("✅ Tugma kontenti muvaffaqiyatli yangilandi.")
 			} else {
-				c.Send("Xatolik yuz berdi.")
+				c.Send("❌ Xatolik yuz berdi: " + err.Error())
 			}
+		} else {
+			c.Send("❌ Noma'lum media fayl yuborildi.")
 		}
 		ClearAdminState(c.Sender().ID)
 		return nil
