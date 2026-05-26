@@ -32,7 +32,15 @@ func UpdateUserSecondaryPhone(tgID int64, phone string) error {
 
 func GetContent(buttonName string) (*Content, error) {
 	var content Content
-	err := DB.Get(&content, "SELECT * FROM contents WHERE button_name = $1", buttonName)
+	err := DB.Get(&content, `
+		SELECT 
+			button_name, 
+			COALESCE(text_content, '') as text_content, 
+			COALESCE(media_file_id, '') as media_file_id, 
+			COALESCE(media_type, '') as media_type 
+		FROM contents 
+		WHERE button_name = $1
+	`, buttonName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
