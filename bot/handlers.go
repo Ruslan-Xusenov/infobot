@@ -160,10 +160,12 @@ func onCheckSub(c telebot.Context) error {
 
 func onDynamicMenuCallback(c telebot.Context) error {
 	unique := c.Callback().Unique
+	log.Printf("Callback received: unique=%q, sender=%d\n", unique, c.Sender().ID)
 
 	// Check if it is an admin action
 	if strings.HasPrefix(unique, "el_") {
 		if !database.IsAdmin(c.Sender().ID) {
+			log.Printf("Non-admin %d tried to access edit label for %q\n", c.Sender().ID, unique)
 			return c.Respond()
 		}
 		uname := unique[3:] // strip "el_"
@@ -174,6 +176,7 @@ func onDynamicMenuCallback(c telebot.Context) error {
 
 	if strings.HasPrefix(unique, "ec_") {
 		if !database.IsAdmin(c.Sender().ID) {
+			log.Printf("Non-admin %d tried to access edit content for %q\n", c.Sender().ID, unique)
 			return c.Respond()
 		}
 		uname := unique[3:] // strip "ec_"
@@ -184,6 +187,7 @@ func onDynamicMenuCallback(c telebot.Context) error {
 
 	if strings.HasPrefix(unique, "db_") {
 		if !database.IsAdmin(c.Sender().ID) {
+			log.Printf("Non-admin %d tried to delete button %q\n", c.Sender().ID, unique)
 			return c.Respond()
 		}
 		uname := unique[3:] // strip "db_"
@@ -197,6 +201,7 @@ func onDynamicMenuCallback(c telebot.Context) error {
 
 	if strings.HasPrefix(unique, "dbc_") {
 		if !database.IsAdmin(c.Sender().ID) {
+			log.Printf("Non-admin %d tried to confirm delete %q\n", c.Sender().ID, unique)
 			return c.Respond()
 		}
 		u := unique[4:] // strip "dbc_"
@@ -207,19 +212,28 @@ func onDynamicMenuCallback(c telebot.Context) error {
 
 	// Default: dynamic menu button click by user
 	btn, err := database.GetButton(unique)
-	if err != nil || btn == nil {
+	if err != nil {
+		log.Printf("GetButton error for unique %q: %v\n", unique, err)
 		return c.Respond()
 	}
+	if btn == nil {
+		log.Printf("Button not found in database for unique %q\n", unique)
+		return c.Respond()
+	}
+	log.Printf("Button found in database: ID=%d, Label=%q, UniqueName=%q\n", btn.ID, btn.Label, btn.UniqueName)
 
 	content, err := database.GetContent(unique)
 	if err != nil {
+		log.Printf("GetContent error for unique %q: %v\n", unique, err)
 		c.Respond()
 		return c.Send("Kontent olishda xatolik yuz berdi: " + err.Error())
 	}
 	if content == nil {
+		log.Printf("Content not found in database for unique %q\n", unique)
 		c.Respond()
 		return c.Send("Kontent hali o'rnatilmagan.")
 	}
+	log.Printf("Content found: text_len=%d, media_type=%q, media_file_id=%q\n", len(content.TextContent), content.MediaType, content.MediaFileID)
 
 	c.Respond()
 	menu := buildMainMenu()
