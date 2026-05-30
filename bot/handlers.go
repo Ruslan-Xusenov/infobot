@@ -29,7 +29,6 @@ func buildMainMenu() *telebot.ReplyMarkup {
 
 func RegisterHandlers() {
 	b.Handle("/start", onStart)
-	b.Handle(telebot.OnContact, onContact)
 	b.Handle("\fcheck_sub", onCheckSub)
 
 	RegisterAdminHandlers()
@@ -41,6 +40,22 @@ func RegisterHandlers() {
 	b.Handle(telebot.OnCallback, onDynamicMenuCallback)
 }
 
+const welcomeText = `🏢 *UySotPro Agentligi*
+
+Biz quruvchilar uchun marketing, sotuv, shaxsiy brend va zapusk xizmatlarini kompleks tarzda ko'rsatamiz — va faqat *natija* uchun ishlaymiz.
+
+👤 *Baxtishod Rasulov* — 5 yillik tajribaga ega marketolog va sotuv eksperti.
+
+📍 Shu kunga qadar Samarqand, Surxondaryo va boshqa viloyatlardagi:
+• City Park
+• Oqsaroy Uylari
+• Oltinsoy City
+• Turon Uylari
+
+loyihalarida yuzlab xonadonlarni sotib kelmoqdamiz.
+
+👇 Xizmatlarimiz haqida to'liq ma'lumot olish uchun quyidagi tugmalardan birini tanlang:`
+
 func onStart(c telebot.Context) error {
 	user, err := database.GetUserByTelegramID(c.Sender().ID)
 	if err != nil {
@@ -48,35 +63,34 @@ func onStart(c telebot.Context) error {
 		return c.Send("Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
 	}
 
+	// Send welcome video + text to every user who starts
+	sendWelcomeMessage(c)
+
 	if user == nil || user.PhoneNumber == "" {
-		menu := &telebot.ReplyMarkup{ResizeKeyboard: true, OneTimeKeyboard: true}
-		btnContact := menu.Contact("📱 Telefon raqamni yuborish")
-		menu.Reply(menu.Row(btnContact))
-		return c.Send("Assalomu alaykum! Botdan to'liq foydalanish uchun asosiy telefon raqamingizni yuboring:", menu)
+		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
+		return c.Send("📱 Iltimos, telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
 	}
 
 	if !user.SecondaryPhone.Valid || user.SecondaryPhone.String == "" {
 		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("Iltimos, qo'shimcha yana bitta telefon raqamingizni yozib yuboring (masalan: +998901234567):", removeKb)
+		return c.Send("📱 Iltimos, qo'shimcha telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
 	}
 
 	return checkAndSendMenu(c)
 }
 
-func onContact(c telebot.Context) error {
-	contact := c.Message().Contact
-	if contact == nil || contact.UserID != c.Sender().ID {
-		return c.Send("Iltimos, o'zingizning telefon raqamingizni yuboring!")
+// sendWelcomeMessage sends the intro video (if configured) + welcome text
+func sendWelcomeMessage(c telebot.Context) {
+	content, err := database.GetContent("start_video")
+	if err == nil && content != nil && content.MediaFileID != "" && content.MediaType == "video" {
+		msg := &telebot.Video{
+			File:    telebot.File{FileID: content.MediaFileID},
+			Caption: welcomeText,
+		}
+		_ = c.Send(msg, telebot.ModeMarkdown)
+	} else {
+		_ = c.Send(welcomeText, telebot.ModeMarkdown)
 	}
-
-	err := database.CreateUser(c.Sender().ID, c.Sender().FirstName, c.Sender().Username, contact.PhoneNumber)
-	if err != nil {
-		log.Println("Error creating user:", err)
-		return c.Send("Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
-	}
-
-	removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-	return c.Send("✅ Asosiy raqam qabul qilindi.\n\nIltimos, qo'shimcha yana bitta telefon raqamingizni yozib yuboring (masalan: +998901234567):", removeKb)
 }
 
 func onText(c telebot.Context) error {
@@ -85,19 +99,34 @@ func onText(c telebot.Context) error {
 	}
 
 	user, err := database.GetUserByTelegramID(c.Sender().ID)
-	if err != nil || user == nil {
+	if err != nil {
 		return nil
 	}
 
-	if user.PhoneNumber != "" && (!user.SecondaryPhone.Valid || user.SecondaryPhone.String == "") {
-		phone := strings.TrimSpace(c.Message().Text)
-		matched, _ := regexp.MatchString(`^\+998\d{9}$`, phone)
-		if !matched {
-			return c.Send("Noto'g'ri format! Iltimos, faqat O'zbekiston raqamini quyidagi formatda yozing:\n+998901234567")
-		}
+	phone := strings.TrimSpace(c.Message().Text)
+	matched, _ := regexp.MatchString(`^\+998\d{9}$`, phone)
 
+	// New user — save primary phone
+	if user == nil || user.PhoneNumber == "" {
+		if !matched {
+			return c.Send("❌ Noto'g'ri format! Iltimos, quyidagi formatda kiriting:\n\n*+998XXXXXXXXX*\n\nMasalan: +998901234567", telebot.ModeMarkdown)
+		}
+		if err2 := database.CreateUser(c.Sender().ID, c.Sender().FirstName, c.Sender().Username, phone); err2 != nil {
+			log.Println("Error creating user:", err2)
+			return c.Send("Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
+		}
+		c.Send("✅ Asosiy raqam qabul qilindi.")
+		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
+		return c.Send("📱 Iltimos, qo'shimcha telefon raqamingizni ham kiriting:\n\nFormat: *+998XXXXXXXXX*", removeKb, telebot.ModeMarkdown)
+	}
+
+	// User has primary phone but no secondary — save secondary
+	if user.PhoneNumber != "" && (!user.SecondaryPhone.Valid || user.SecondaryPhone.String == "") {
+		if !matched {
+			return c.Send("❌ Noto'g'ri format! Iltimos, quyidagi formatda kiriting:\n\n*+998XXXXXXXXX*\n\nMasalan: +998901234567", telebot.ModeMarkdown)
+		}
 		database.UpdateUserSecondaryPhone(c.Sender().ID, phone)
-		c.Send("✅ Qo'shimcha raqam qabul qilindi.")
+		c.Send("✅ Raqamlar qabul qilindi. Rahmat!")
 		return checkAndSendMenu(c)
 	}
 

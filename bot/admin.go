@@ -132,8 +132,8 @@ func onAdminChannels(c telebot.Context) error {
 	menu := &telebot.ReplyMarkup{}
 	btnAdd := menu.Data("➕ Kanal qo'shish", "add_channel")
 	b.Handle(&btnAdd, func(cc telebot.Context) error {
-		SetAdminState(cc.Sender().ID, "wait_channel_info", nil)
-		return cc.Send("Kanal ma'lumotlarini quyidagi formatda yuboring:\n`ChannelID URL Nomi`\nMasalan:\n`-100123456789 https://t.me/kanalim Mening Kanalim`\n\nBekor qilish uchun /admin", telebot.ModeMarkdown)
+		SetAdminState(cc.Sender().ID, "wait_channel_link", nil)
+		return cc.Send("📢 Kanal linkini yuboring:\n\nMasalan: `https://t.me/kanalim`\n\nBekor qilish uchun /admin", telebot.ModeMarkdown)
 	})
 
 	channels, _ := database.GetAllChannels()
@@ -285,18 +285,38 @@ func onTextAdminCheck(c telebot.Context) error {
 		}
 		ClearAdminState(c.Sender().ID)
 
-	case "wait_channel_info":
-		parts := strings.SplitN(text, " ", 3)
-		if len(parts) < 3 {
-			return c.Send("Noto'g'ri format. Qaytadan yuboring:")
+	case "wait_channel_link":
+		link := strings.TrimSpace(text)
+		if !strings.HasPrefix(link, "https://t.me/") && !strings.HasPrefix(link, "@") {
+			return c.Send("❌ Noto'g'ri format! Link quyidagicha bo'lishi kerak:\n`https://t.me/kanalim`\n\nQaytadan yuboring:", telebot.ModeMarkdown)
 		}
-		cID, err := strconv.ParseInt(parts[0], 10, 64)
+		// Extract @username from link
+		username := link
+		if strings.HasPrefix(link, "https://t.me/") {
+			username = "@" + strings.TrimPrefix(link, "https://t.me/")
+		}
+		// Get channel info from Telegram to obtain the real channel ID
+		chat, err := b.ChatByUsername(username)
 		if err != nil {
-			return c.Send("Kanal ID raqam bo'lishi kerak. Qaytadan yuboring:")
+			return c.Send("❌ Kanal topilmadi. Bot kanalga admin sifatida qo'shilganligini tekshiring va linkni to'g'ri kiriting:\n\nQaytadan yuboring:")
 		}
-		err = database.AddChannel(cID, parts[1], parts[2])
+		// Save link and channelID in state, ask for display name
+		SetAdminState(c.Sender().ID, "wait_channel_name", map[string]interface{}{
+			"channel_id": chat.ID,
+			"url":        link,
+		})
+		return c.Send(fmt.Sprintf("✅ Kanal topildi: *%s*\n\nEndi bu kanal uchun tugma ustidagi *nomlanishini* kiriting:\n(Masalan: Bizning kanal)", chat.Title), telebot.ModeMarkdown)
+
+	case "wait_channel_name":
+		name := strings.TrimSpace(text)
+		if name == "" {
+			return c.Send("Nom bo'sh bo'lishi mumkin emas. Qaytadan yuboring:")
+		}
+		channelID := state.Data["channel_id"].(int64)
+		url := state.Data["url"].(string)
+		err := database.AddChannel(channelID, url, name)
 		if err == nil {
-			c.Send("✅ Kanal qo'shildi.")
+			c.Send(fmt.Sprintf("✅ *%s* kanali muvaffaqiyatli qo'shildi!", name), telebot.ModeMarkdown)
 		} else {
 			c.Send("❌ Xatolik yuz berdi: " + err.Error())
 		}
