@@ -71,11 +71,6 @@ func onStart(c telebot.Context) error {
 		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
 	}
 
-	if !user.SecondaryPhone.Valid || user.SecondaryPhone.String == "" {
-		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun qo'shimcha telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
-	}
-
 	return checkAndSendMenu(c)
 }
 
@@ -106,7 +101,7 @@ func onText(c telebot.Context) error {
 	phone := strings.TrimSpace(c.Message().Text)
 	matched, _ := regexp.MatchString(`^\+998\d{9}$`, phone)
 
-	// New user — save primary phone
+	// New user — save phone number
 	if user == nil || user.PhoneNumber == "" {
 		if !matched {
 			return c.Send("❌ Noto'g'ri format! Iltimos, quyidagi formatda kiriting:\n\n*+998XXXXXXXXX*\n\nMasalan: +998901234567", telebot.ModeMarkdown)
@@ -115,18 +110,7 @@ func onText(c telebot.Context) error {
 			log.Println("Error creating user:", err2)
 			return c.Send("Xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
 		}
-		c.Send("✅ Asosiy raqam qabul qilindi.")
-		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun qo'shimcha telefon raqamingizni ham kiriting:\n\nFormat: *+998XXXXXXXXX*", removeKb, telebot.ModeMarkdown)
-	}
-
-	// User has primary phone but no secondary — save secondary
-	if user.PhoneNumber != "" && (!user.SecondaryPhone.Valid || user.SecondaryPhone.String == "") {
-		if !matched {
-			return c.Send("❌ Noto'g'ri format! Iltimos, quyidagi formatda kiriting:\n\n*+998XXXXXXXXX*\n\nMasalan: +998901234567", telebot.ModeMarkdown)
-		}
-		database.UpdateUserSecondaryPhone(c.Sender().ID, phone)
-		c.Send("✅ Raqamlar qabul qilindi. Rahmat!")
+		c.Send("✅ Telefon raqam qabul qilindi. Rahmat!")
 		return checkAndSendMenu(c)
 	}
 

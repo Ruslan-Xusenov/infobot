@@ -221,28 +221,28 @@ func onAdminExport(c telebot.Context) error {
 		return c.Send("Bazadan ma'lumotlarni olishda xatolik yuz berdi.")
 	}
 
+	tashkent, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		tashkent = time.UTC
+	}
+
 	var sb strings.Builder
-	sb.WriteString("ID,Telegram ID,Ism,Username,Asosiy Raqam,Qo'shimcha Raqam,Status,Qo'shilgan sana\n")
+	sb.WriteString("ID,Telegram ID,Ism,Username,Telefon Raqam,Status,Qo'shilgan sana (Toshkent)\n")
 
 	for _, u := range users {
-		secPhone := ""
-		if u.SecondaryPhone.Valid {
-			secPhone = u.SecondaryPhone.String
-		}
-		sb.WriteString(fmt.Sprintf("%d,%d,%s,%s,%s,%s,%s,%s\n",
+		sb.WriteString(fmt.Sprintf("%d,%d,%s,%s,%s,%s,%s\n",
 			u.ID, u.TelegramID,
 			strings.ReplaceAll(u.FirstName, ",", " "),
 			u.Username,
 			u.PhoneNumber,
-			secPhone,
 			u.Status,
-			u.CreatedAt.Format("2006-01-02 15:04"),
+			u.CreatedAt.In(tashkent).Format("2006-01-02 15:04"),
 		))
 	}
 
 	doc := &telebot.Document{
 		File:     telebot.FromReader(strings.NewReader(sb.String())),
-		FileName: fmt.Sprintf("foydalanuvchilar_%s.csv", time.Now().Format("20060102")),
+		FileName: fmt.Sprintf("foydalanuvchilar_%s.csv", time.Now().In(tashkent).Format("20060102")),
 		Caption:  "📥 Barcha foydalanuvchilar ro'yxati (CSV formatida). Bu faylni Excel orqali ochishingiz mumkin.",
 	}
 	return c.Send(doc)

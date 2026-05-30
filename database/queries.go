@@ -133,7 +133,7 @@ func GetAllAdmins() ([]int64, error) {
 
 func GetAllUsers() ([]User, error) {
 	var users []User
-	err := DB.Select(&users, "SELECT * FROM users ORDER BY created_at DESC")
+	err := DB.Select(&users, "SELECT * FROM users ORDER BY created_at ASC")
 	return users, err
 }
 
