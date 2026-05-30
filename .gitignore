@@ -1,5 +1,6 @@
 # Binaries and executables
 bot_app
+bot_app_test
 *.exe
 *.exe~
 *.dll
@@ -13,6 +14,16 @@ bin/
 .env
 .env.local
 .env.*.local
+
+# Logs
+*.log
+bot.log
+
+# Media files (large files - don't commit)
+*.mp4
+*.avi
+*.mov
+*.mkv
 
 # IDEs and Editors
 .idea/
