@@ -12,13 +12,14 @@ import (
 )
 
 var (
-	adminMenu = &telebot.ReplyMarkup{}
-	btnStat   = adminMenu.Data("📊 Analitika", "admin_stat")
-	btnBtns   = adminMenu.Data("🗂 Tugmalar boshqaruvi", "admin_btns")
-	btnChan   = adminMenu.Data("📢 Majburiy obuna", "admin_chan")
-	btnBcast  = adminMenu.Data("📨 Xabar tarqatish", "admin_bcast")
-	btnAdmins = adminMenu.Data("👥 Adminlar", "admin_admins")
-	btnExport = adminMenu.Data("📥 CSV Yuklab olish", "admin_export")
+	adminMenu  = &telebot.ReplyMarkup{}
+	btnStat    = adminMenu.Data("📊 Analitika", "admin_stat")
+	btnBtns    = adminMenu.Data("🗂 Tugmalar boshqaruvi", "admin_btns")
+	btnChan    = adminMenu.Data("📢 Majburiy obuna", "admin_chan")
+	btnBcast   = adminMenu.Data("📨 Xabar tarqatish", "admin_bcast")
+	btnAdmins  = adminMenu.Data("👥 Adminlar", "admin_admins")
+	btnExport  = adminMenu.Data("📥 CSV Yuklab olish", "admin_export")
+	btnSetVideo = adminMenu.Data("🎬 Start videosi", "admin_setvideo")
 
 	btnAddBtn    = adminMenu.Data("➕ Yangi tugma qo'shish", "add_btn")
 	btnAdminBack = adminMenu.Data("🔙 Ortga", "admin_back")
@@ -29,6 +30,7 @@ func RegisterAdminHandlers() {
 		adminMenu.Row(btnStat, btnBtns),
 		adminMenu.Row(btnChan, btnBcast),
 		adminMenu.Row(btnAdmins, btnExport),
+		adminMenu.Row(btnSetVideo),
 	)
 
 	b.Handle("/admin", onAdmin)
@@ -38,8 +40,26 @@ func RegisterAdminHandlers() {
 	b.Handle(&btnBcast, onAdminBcast)
 	b.Handle(&btnAdmins, onAdminAdmins)
 	b.Handle(&btnExport, onAdminExport)
+	b.Handle(&btnSetVideo, onAdminSetVideo)
 	b.Handle(&btnAddBtn, onAdminAddButtonStart)
 	b.Handle(&btnAdminBack, onAdminBackToMenu)
+}
+
+func onAdminSetVideo(c telebot.Context) error {
+	if !database.IsAdmin(c.Sender().ID) {
+		return c.Respond()
+	}
+	// Show current video status
+	content, _ := database.GetContent("start_video")
+	var statusText string
+	if content != nil && content.MediaFileID != "" && content.MediaType == "video" {
+		statusText = "✅ Hozirda start videosi o'rnatilgan."
+	} else {
+		statusText = "❌ Hozirda start videosi o'rnatilmagan (faqat matn ko'rinadi)."
+	}
+	SetAdminState(c.Sender().ID, "wait_start_video", nil)
+	c.Respond()
+	return c.Send(fmt.Sprintf("%s\n\n🎬 Yangi start videosini yuboring (caption yozmasangiz ham bo'ladi).\n\nBekor qilish: /admin", statusText))
 }
 
 func onAdminAddButtonStart(c telebot.Context) error {
@@ -386,6 +406,22 @@ func onMediaAdminCheck(c telebot.Context) error {
 			}
 		} else {
 			c.Send("❌ Noma'lum media fayl yuborildi.")
+		}
+		ClearAdminState(c.Sender().ID)
+		return nil
+	}
+
+	if state.State == "wait_start_video" {
+		if msg.Video != nil {
+			err := database.UpdateContent("start_video", "", msg.Video.FileID, "video")
+			if err == nil {
+				c.Send("✅ Start videosi muvaffaqiyatli o'rnatildi! Endi /start bosgan foydalanuvchilar shu videoni ko'radi.")
+			} else {
+				c.Send("❌ Xatolik yuz berdi: " + err.Error())
+			}
+		} else {
+			c.Send("❌ Faqat video fayl yuboring!")
+			return nil
 		}
 		ClearAdminState(c.Sender().ID)
 		return nil
