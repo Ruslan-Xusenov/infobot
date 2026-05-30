@@ -68,12 +68,12 @@ func onStart(c telebot.Context) error {
 
 	if user == nil || user.PhoneNumber == "" {
 		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("📱 Iltimos, telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
+		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
 	}
 
 	if !user.SecondaryPhone.Valid || user.SecondaryPhone.String == "" {
 		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("📱 Iltimos, qo'shimcha telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
+		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun qo'shimcha telefon raqamingizni kiriting:\n\nFormat: *+998XXXXXXXXX*\n\nMasalan: +998901234567", removeKb, telebot.ModeMarkdown)
 	}
 
 	return checkAndSendMenu(c)
@@ -117,7 +117,7 @@ func onText(c telebot.Context) error {
 		}
 		c.Send("✅ Asosiy raqam qabul qilindi.")
 		removeKb := &telebot.ReplyMarkup{RemoveKeyboard: true}
-		return c.Send("📱 Iltimos, qo'shimcha telefon raqamingizni ham kiriting:\n\nFormat: *+998XXXXXXXXX*", removeKb, telebot.ModeMarkdown)
+		return c.Send("📱 Botdan foydalanish va to'liq ma'lumot olish uchun qo'shimcha telefon raqamingizni ham kiriting:\n\nFormat: *+998XXXXXXXXX*", removeKb, telebot.ModeMarkdown)
 	}
 
 	// User has primary phone but no secondary — save secondary
